@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+venv/
+dbt/logs/
+dbt/target/
+*.log
+.DS_Store
+.idea/
+.vscode/
+data/
+checkpoints/
