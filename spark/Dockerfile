@@ -13,6 +13,7 @@ ENV PYSPARK_SUBMIT_ARGS="--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN curl -o /tmp/postgresql.jar https://jdbc.postgresql.org/download/postgresql-42.7.3.jar
 
 COPY . .
 
