@@ -1,8 +1,7 @@
-import os 
+import os
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col,from_json
-from pyspark.sql.types import
-(
+from pyspark.sql.functions import col, from_json
+from pyspark.sql.types import (
     StructType,
     StructField,
     StringType,
@@ -13,19 +12,22 @@ from pyspark.sql.types import
 
 from dotenv import load_dotenv
 
+
 load_dotenv()
 
-APP_NAME = os.getenv("SPARK_APP_NAME","crypto-stream-processor")
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS_INTERNAL","KAFKA:29092")
-KAFKA_TOPIC = os.getenv(("KAFKA_TOPIC","raw_trades"))
+APP_NAME = os.getenv("SPARK_APP_NAME", "crypto-stream-processor")
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS_INTERNAL", "kafka:29092")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "raw_trades")
+
 
 def build_spark_session() -> SparkSession:
-    return(
+    return (
         SparkSession.builder
         .appName(APP_NAME)
-        .config("spark.sql.shuffle.partitions","2")
+        .config("spark.sql.shuffle.partitions", "2")
         .getOrCreate()
     )
+
 
 def get_trade_schema() -> StructType:
     return StructType([
@@ -41,25 +43,26 @@ def get_trade_schema() -> StructType:
         StructField("ingested_at", StringType(), True),
     ])
 
+
 def main():
     spark = build_spark_session()
     spark.sparkContext.setLogLevel("WARN")
-    
+
     schema = get_trade_schema()
 
     raw_df = (
         spark.readStream
         .format("kafka")
-        .option("kafka.bootstrap.servers",KAFKA_BOOTSTRAP_SERVERS)
-        .option("subscribe",KAFKA_TOPIC)
-        .option("startingOffsets","latest")
+        .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
+        .option("subscribe", KAFKA_TOPIC)
+        .option("startingOffsets", "latest")
         .load()
     )
 
     parsed_df = (
         raw_df
         .selectExpr("CAST(value AS STRING) as json_value")
-        .select(from_json(col("json_value"),schema).alias("data"))
+        .select(from_json(col("json_value"), schema).alias("data"))
         .select("data.*")
     )
 
@@ -67,7 +70,7 @@ def main():
         parsed_df.writeStream
         .format("console")
         .outputMode("append")
-        .option("truncate",False)
+        .option("truncate", False)
         .start()
     )
 
