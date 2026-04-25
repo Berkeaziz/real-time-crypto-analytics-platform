@@ -13,5 +13,5 @@ CREATE TABLE IF NOT EXISTS raw.trades (
     is_buyer_maker BOOLEAN,
     source VARCHAR(50),
     ingested_at TIMESTAMPTZ NOT NULL,
-    event_time TIMESTAMP NOT NULL
+    event_time TIMESTAMPTZ NOT NULL
 );
