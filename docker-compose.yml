@@ -7,7 +7,9 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
-
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
   kafka:
     image: confluentinc/cp-kafka:7.6.1
     container_name: crypto_kafka
@@ -22,6 +24,9 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - kafka_data:/var/lib/kafka/data   
+
 
   redis:
     image: redis:7.2-alpine
@@ -51,7 +56,25 @@ services:
       - "${GRAFANA_PORT}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-
+  spark:
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
+    container_name: crypto_spark
+    depends_on:
+      - kafka
+      - postgres
+    env_file:
+      - .env
+    volumes:
+      - ./spark:/app
+      - ./checkpoints:/app/checkpoints
+    working_dir: /app
+    command: tail -f /dev/null
+    
 volumes:
   postgres_data:
   grafana_data:
+  zookeeper_data:
+  zookeeper_log:
+  kafka_data:
