@@ -1,6 +1,6 @@
 import os
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, from_json,to_timestamp,to_utc_timestamp
+from pyspark.sql.functions import col, from_json,to_timestamp,current_timestamp
 from pyspark.sql.types import (
     StructType,
     StructField,
@@ -30,6 +30,8 @@ def build_spark_session() -> SparkSession:
 
 
 def write_to_postgres(batch_df, batch_id):
+    if batch_df.isEmpty():
+        return
     (
         batch_df.write
         .format("jdbc")
@@ -79,14 +81,14 @@ def main():
         .select("data.*")
         .withColumn("trade_time", to_timestamp("trade_time"))
         .withColumn("event_time", to_timestamp("event_time"))
-        .withColumn("ingested_at", to_timestamp("ingested_at"))
-        .withColumn("event_time", to_utc_timestamp("event_time", "UTC"))
+        .withColumn("ingested_at", current_timestamp())
     )
 
     query = (
         parsed_df.writeStream
         .foreachBatch(write_to_postgres)
         .outputMode("append")
+        .option("checkpointLocation", "/tmp/checkpoints/raw_trades_to_postgres")
         .start()
     )
 
