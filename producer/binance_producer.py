@@ -69,7 +69,6 @@ def normalize_trade_message(raw_message: dict) -> dict | None:
         ),
         "is_buyer_maker": data.get("m"),
         "source": "binance",
-        "ingested_at": datetime.now(timezone.utc).isoformat(),
     }
     return normalized
 
