@@ -4,7 +4,7 @@ __pycache__/
 *.pyd
 .env
 .venv/
-venv/
+venv312/
 dbt/logs/
 dbt/target/
 *.log
