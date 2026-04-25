@@ -1,6 +1,6 @@
 import os
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, from_json
+from pyspark.sql.functions import col, from_json,to_timestamp,to_utc_timestamp
 from pyspark.sql.types import (
     StructType,
     StructField,
@@ -24,10 +24,23 @@ def build_spark_session() -> SparkSession:
     return (
         SparkSession.builder
         .appName(APP_NAME)
-        .config("spark.sql.shuffle.partitions", "2")
+        .config("spark.jars", "/tmp/postgresql.jar")
         .getOrCreate()
     )
 
+
+def write_to_postgres(batch_df, batch_id):
+    (
+        batch_df.write
+        .format("jdbc")
+        .option("url", "jdbc:postgresql://postgres:5432/crypto")
+        .option("dbtable", "raw.trades")
+        .option("user", "crypto_user")
+        .option("password", "crypto_pass")
+        .option("driver", "org.postgresql.Driver")
+        .mode("append")
+        .save()
+    )
 
 def get_trade_schema() -> StructType:
     return StructType([
@@ -64,13 +77,16 @@ def main():
         .selectExpr("CAST(value AS STRING) as json_value")
         .select(from_json(col("json_value"), schema).alias("data"))
         .select("data.*")
+        .withColumn("trade_time", to_timestamp("trade_time"))
+        .withColumn("event_time", to_timestamp("event_time"))
+        .withColumn("ingested_at", to_timestamp("ingested_at"))
+        .withColumn("event_time", to_utc_timestamp("event_time", "UTC"))
     )
 
     query = (
         parsed_df.writeStream
-        .format("console")
+        .foreachBatch(write_to_postgres)
         .outputMode("append")
-        .option("truncate", False)
         .start()
     )
 
