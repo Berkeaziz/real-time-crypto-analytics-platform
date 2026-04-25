@@ -4,11 +4,12 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
     curl \
-    openjdk-17-jdk \
+    default-jdk \
     && rm -rf /var/lib/apt/lists/*
 
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/default-java
 ENV PATH="$JAVA_HOME/bin:$PATH"
+ENV PYSPARK_SUBMIT_ARGS="--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1 pyspark-shell"
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
