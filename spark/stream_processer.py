@@ -26,6 +26,8 @@ from pyspark.sql.types import (
 )
 
 from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extras import execute_batch
 
 
 load_dotenv()
@@ -60,18 +62,65 @@ def write_raw_to_postgres(batch_df, batch_id):
     )
 
 def write_ohlcv_to_postgres(batch_df, batch_id):
-    (
-        batch_df
-        .write
-        .format("jdbc")
-        .option("url", "jdbc:postgresql://postgres:5432/crypto")
-        .option("dbtable", "marts.ohlcv_10s")
-        .option("user", "crypto_user")
-        .option("password", "crypto_pass")
-        .option("driver", "org.postgresql.Driver")
-        .mode("append")
-        .save()
+    rows = batch_df.collect()
+
+    if not rows:
+        return
+
+    conn = psycopg2.connect(
+        host="postgres",
+        port=5432,
+        database="crypto",
+        user="crypto_user",
+        password="crypto_pass",
     )
+
+    cursor = conn.cursor()
+
+    upsert_sql = """
+    INSERT INTO marts.ohlcv_10s (
+        symbol,
+        window_start,
+        window_end,
+        open_price,
+        high_price,
+        low_price,
+        close_price,
+        volume,
+        trade_count,
+        created_at
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+    ON CONFLICT (symbol, window_start, window_end)
+    DO UPDATE SET
+        open_price = EXCLUDED.open_price,
+        high_price = EXCLUDED.high_price,
+        low_price = EXCLUDED.low_price,
+        close_price = EXCLUDED.close_price,
+        volume = EXCLUDED.volume,
+        trade_count = EXCLUDED.trade_count,
+        created_at = NOW();
+    """
+
+    for row in rows:
+        cursor.execute(
+            upsert_sql,
+            (
+                row["symbol"],
+                row["window_start"],
+                row["window_end"],
+                row["open_price"],
+                row["high_price"],
+                row["low_price"],
+                row["close_price"],
+                row["volume"],
+                row["trade_count"],
+            ),
+        )
+
+    conn.commit()
+    cursor.close()
+    conn.close()
 
 
 def get_trade_schema() -> StructType:
@@ -155,7 +204,7 @@ def main():
     ohlcv_query = (
         ohlcv_10s_df.writeStream
         .foreachBatch(write_ohlcv_to_postgres)
-        .outputMode("append")
+        .outputMode("update")
         .option("checkpointLocation", "/app/checkpoints/ohlcv_10s")
         .start()
         )
