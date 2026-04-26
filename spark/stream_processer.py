@@ -1,6 +1,21 @@
 import os
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, from_json,to_timestamp,current_timestamp
+from pyspark.sql.functions import (
+    col, 
+    from_json,
+    to_timestamp,
+    current_timestamp,
+    window,
+    avg,
+    min,
+    max,
+    sum,
+    count,
+    first,
+    last,
+)
+
+
 from pyspark.sql.types import (
     StructType,
     StructField,
@@ -29,7 +44,7 @@ def build_spark_session() -> SparkSession:
     )
 
 
-def write_to_postgres(batch_df, batch_id):
+def write_raw_to_postgres(batch_df, batch_id):
     if batch_df.isEmpty():
         return
     (
@@ -43,6 +58,21 @@ def write_to_postgres(batch_df, batch_id):
         .mode("append")
         .save()
     )
+
+def write_ohlcv_to_postgres(batch_df, batch_id):
+    (
+        batch_df
+        .write
+        .format("jdbc")
+        .option("url", "jdbc:postgresql://postgres:5432/crypto")
+        .option("dbtable", "marts.ohlcv_10s")
+        .option("user", "crypto_user")
+        .option("password", "crypto_pass")
+        .option("driver", "org.postgresql.Driver")
+        .mode("append")
+        .save()
+    )
+
 
 def get_trade_schema() -> StructType:
     return StructType([
@@ -84,16 +114,53 @@ def main():
         .withColumn("ingested_at", current_timestamp())
     )
 
+    ohlcv_10s_df = (
+        parsed_df
+        .withWatermark("trade_time", "30 seconds")
+        .groupBy(
+            window(col("trade_time"), "10 seconds"),
+            col("symbol")
+        )
+        .agg(
+            first("price").alias("open_price"),
+            max("price").alias("high_price"),
+            min("price").alias("low_price"),
+            last("price").alias("close_price"),
+            sum("quantity").alias("volume"),
+            count("*").alias("trade_count"),
+        )
+        .select(
+            col("symbol"),
+            col("window.start").alias("window_start"),
+            col("window.end").alias("window_end"),
+            col("open_price"),
+            col("high_price"),
+            col("low_price"),
+            col("close_price"),
+            col("volume"),
+            col("trade_count"),
+            current_timestamp().alias("created_at"),
+        )
+    )
+            
+
     query = (
         parsed_df.writeStream
-        .foreachBatch(write_to_postgres)
+        .foreachBatch(write_raw_to_postgres)
         .outputMode("append")
         .option("checkpointLocation", "/tmp/checkpoints/raw_trades_to_postgres")
         .start()
     )
 
-    query.awaitTermination()
-
+    ohlcv_query = (
+        ohlcv_10s_df.writeStream
+        .foreachBatch(write_ohlcv_to_postgres)
+        .outputMode("append")
+        .option("checkpointLocation", "/app/checkpoints/ohlcv_10s")
+        .start()
+        )
+    
+    spark.streams.awaitAnyTermination()
 
 if __name__ == "__main__":
     main()
