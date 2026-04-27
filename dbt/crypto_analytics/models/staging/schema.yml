@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: stg_trades
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+
+      - name: symbol
+        tests:
+          - not_null
+
+      - name: price
+        tests:
+          - not_null
+
+      - name: quantity
+        tests:
+          - not_null
+
+      - name: trade_time
+        tests:
+          - not_null
