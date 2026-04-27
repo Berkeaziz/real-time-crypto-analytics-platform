@@ -1,0 +1,11 @@
+name: 'crypto_dbt'
+version: '1.0.0'
+config-version: 2
+
+profile: 'crypto_dbt'
+
+model-paths: ["models"]
+
+models:
+  crypto_dbt:
+    +materialized: view
