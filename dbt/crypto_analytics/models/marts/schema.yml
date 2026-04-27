@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: fct_ohlcv_10s
+    description: "10-second OHLCV candle data generated from streaming trades."
+
+    columns:
+      - name: symbol
+        tests:
+          - not_null
+
+      - name: window_start
+        tests:
+          - not_null
+
+      - name: window_end
+        tests:
+          - not_null
+
+      - name: open_price
+        tests:
+          - not_null
+
+      - name: high_price
+        tests:
+          - not_null
+
+      - name: low_price
+        tests:
+          - not_null
+
+      - name: close_price
+        tests:
+          - not_null
+
+      - name: volume
+        tests:
+          - not_null
+
+      - name: trade_count
+        tests:
+          - not_null
+
+      - name: created_at
+        tests:
+          - not_null
