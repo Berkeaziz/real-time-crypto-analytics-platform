@@ -5,8 +5,8 @@ __pycache__/
 .env
 .venv/
 venv312/
-dbt/logs/
-dbt/target/
+dbt/crypto_analytics/logs
+dbt/crypto_analytics/target
 *.log
 .DS_Store
 .idea/
