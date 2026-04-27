@@ -1,0 +1,7 @@
+version: 2
+
+sources:
+  - name: marts
+    schema: marts
+    tables:
+      - name: ohlcv_10s
