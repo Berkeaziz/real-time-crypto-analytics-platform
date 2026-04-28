@@ -59,22 +59,41 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
 
-api:
-  image: python:3.12-slim
-  container_name: crypto_api
-  working_dir: /app
-  volumes:
-    - ./api:/app/api
-  command: sh -c "pip install -r api/requirements.txt && uvicorn api.main:app --host 0.0.0.0 --port 8000"
-  ports:
-    - "${API_PORT}:8000"
-  environment:
-    REDIS_HOST: redis
-    REDIS_PORT: 6379
-  depends_on:
-    - redis
+  api:
+    image: python:3.12-slim
+    container_name: crypto_api
+    working_dir: /app
+    volumes:
+      - ./api:/app/api
+    command: sh -c "pip install -r api/requirements.txt && uvicorn api.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "${API_PORT}:8000"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - redis
 
-
+  redis-writer:
+    image: python:3.12-slim
+    container_name: crypto_redis_writer
+    working_dir: /app
+    volumes:
+      - ./redis:/app/redis
+    command: sh -c "pip install -r redis/requirements.txt && python redis/update_latest_candles.py"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REFRESH_SECONDS: 5  
+    depends_on:
+      - postgres
+      - redis
+      
   spark:
     build:
       context: ./spark
