@@ -58,6 +58,23 @@ services:
       - "${GRAFANA_PORT}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+
+api:
+  image: python:3.12-slim
+  container_name: crypto_api
+  working_dir: /app
+  volumes:
+    - ./api:/app/api
+  command: sh -c "pip install -r api/requirements.txt && uvicorn api.main:app --host 0.0.0.0 --port 8000"
+  ports:
+    - "${API_PORT}:8000"
+  environment:
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+  depends_on:
+    - redis
+
+
   spark:
     build:
       context: ./spark
