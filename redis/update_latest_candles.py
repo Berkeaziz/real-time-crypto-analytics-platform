@@ -8,16 +8,16 @@ import psycopg2
 import redis
 
 
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
-POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
-POSTGRES_DB = os.getenv("POSTGRES_DB", "crypto")
-POSTGRES_USER = os.getenv("POSTGRES_USER", "crypto_user")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "crypto_pass")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST")
+POSTGRES_PORT = int(os.getenv("POSTGRES_PORT"))
+POSTGRES_DB = os.getenv("POSTGRES_DB")
+POSTGRES_USER = os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = int(os.getenv("REDIS_PORT"))
 
-REFRESH_SECONDS = int(os.getenv("REFRESH_SECONDS","5"))
+REFRESH_SECONDS = int(os.getenv("REFRESH_SECONDS"))
 
 
 def json_default(obj):
@@ -28,6 +28,14 @@ def json_default(obj):
     return str(obj)
 
 def update_latest_candles():
+    """
+    Fallback utility:
+    Reads the latest candle per symbol from the dbt/PostgreSQL mart and writes
+    it to Redis.
+
+    Not used in the main streaming architecture anymore because PySpark writes
+    latest candles directly to Redis.
+    """
     pg_conn = psycopg2.connect(
         host = POSTGRES_HOST,
         port =POSTGRES_PORT,
