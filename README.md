@@ -9,19 +9,17 @@ A production-style, end-to-end streaming data platform that ingests live trade d
 ## Architecture Overview
 
 ```mermaid
-flowchart TD
-    A["Binance WebSocket\nBTC/ETH/SOL @trade"] -->|"normalized JSON"| B["Apache Kafka\ntopic: raw_trades"]
-    B -->|"structured streaming"| C["Spark Stream Processor"]
-
-    C -->|"append"| D["PostgreSQL\nraw.trades"]
-    C -->|"upsert every 10s"| E["PostgreSQL\nmarts.ohlcv_10s"]
-    C -->|"latest candle"| F["Redis\nlatest_candle:*"]
-
-    D -->|"dbt view"| G["stg_trades"]
-    E -->|"dbt view"| H["fct_ohlcv_10s\n(candle_type, return_pct...)"]
-
-    H -->|"SQL"| I["Grafana\nDashboards"]
-    F -->|"GET /latest-candle"| J["FastAPI\nREST API"]
+%%{init: {"flowchart": {"nodeSpacing": 30, "rankSpacing": 40}, "themeVariables": {"fontSize": "13px"}} }%%
+flowchart LR
+    A["Binance WS"] -->|JSON| B["Kafka\nraw_trades"]
+    B -->|streaming| C["Spark"]
+    C -->|append| D["PG\nraw.trades"]
+    C -->|upsert| E["PG\nohlcv_10s"]
+    C -->|latest| F["Redis"]
+    D -->|dbt| G["stg_trades"]
+    E -->|dbt| H["fct_ohlcv_10s"]
+    H -->|SQL| I["Grafana"]
+    F -->|GET| J["FastAPI"]
 ```
 
 ---
@@ -45,21 +43,21 @@ flowchart TD
 ## Data Flow
 
 ```mermaid
+%%{init: {"themeVariables": {"fontSize": "13px"}} }%%
 sequenceDiagram
-    participant B as Binance WS
+    participant B as Binance
     participant K as Kafka
     participant S as Spark
-    participant PG as PostgreSQL
+    participant PG as Postgres
     participant R as Redis
-    participant API as FastAPI
-
-    B->>K: Normalized trade event (JSON)
-    K->>S: Micro-batch consumption
-    S->>PG: Append to raw.trades
-    S->>PG: Upsert OHLCV window (10s)
-    S->>R: SET latest_candle:BTCUSDT
-    API->>R: GET latest_candle:BTCUSDT
-    API-->>API: Return close_price + Istanbul time
+    participant A as FastAPI
+    B->>K: trade event (JSON)
+    K->>S: micro-batch
+    S->>PG: append raw.trades
+    S->>PG: upsert ohlcv_10s
+    S->>R: SET latest_candle
+    A->>R: GET latest_candle
+    A-->>A: return price + TR time
 ```
 
 ---
@@ -67,20 +65,17 @@ sequenceDiagram
 ## Database Schema
 
 ```mermaid
+%%{init: {"themeVariables": {"fontSize": "13px"}} }%%
 erDiagram
     RAW_TRADES {
         bigserial id PK
         varchar symbol
-        bigint trade_id
         numeric price
         numeric quantity
         timestamptz trade_time
         timestamptz event_time
         timestamptz ingested_at
-        boolean is_buyer_maker
-        varchar source
     }
-
     OHLCV_10S {
         bigserial id PK
         varchar symbol
@@ -93,7 +88,6 @@ erDiagram
         numeric volume
         bigint trade_count
     }
-
     RAW_TRADES ||--o{ OHLCV_10S : "aggregated into"
 ```
 
@@ -219,10 +213,7 @@ Enriched metrics powered by dbt views: candle return %, price range, avg trade s
 ![Analytics Dashboard](docs/screenshots/Analytics__dbt_.PNG)
 
 ### Write Latency
-
-Measured streaming latency from OHLCV `window_end` to PostgreSQL write timestamps.
-
-During the observed run, the first write of most 10-second OHLCV candles completed within approximately **1–2 seconds** after the aggregation window closed. Some windows received later updates, with `last_update_lag` reaching around **11 seconds**, reflecting Spark Structured Streaming updates for open or recently closed aggregation windows.
+Measured streaming latency from OHLCV `window_end` to PostgreSQL write timestamps. First write of most 10-second candles completed within **1–2 seconds** after the window closed. Some windows show `last_update_lag` around **11 seconds**, reflecting Spark's upsert updates for recently closed aggregation windows.
 
 ![Write Latency](docs/screenshots/Write_Latency.PNG)
 
