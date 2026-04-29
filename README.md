@@ -213,7 +213,3 @@ Measured streaming latency from OHLCV `window_end` to PostgreSQL write timestamp
 **Fallback writer** — `update_latest_candles.py` can re-sync Redis from PostgreSQL independently of Spark, useful during restarts or debugging.
 
 ---
-
-## License
-
-MIT
