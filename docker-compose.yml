@@ -86,6 +86,7 @@ services:
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_TOPIC: raw_trades
+      BINANCE_WS_URL: wss://stream.binance.com:9443/stream?streams=btcusdt@trade/ethusdt@trade/solusdt@trade
     depends_on:
       - kafka
         
