@@ -28,5 +28,6 @@ CREATE TABLE IF NOT EXISTS marts.ohlcv_10s (
     volume NUMERIC(18,8),
     trade_count BIGINT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(symbol, window_start, window_end)
 );
