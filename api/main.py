@@ -1,12 +1,23 @@
 from fastapi import FastAPI , HTTPException
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import redis
 import json
 import os
 
 app = FastAPI()
 
-REDIS_HOST = os.getenv("REDIS_HOST","localhost")
+REDIS_HOST = os.getenv("REDIS_HOST_EXTERNAL","redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT",6379))
+
+def to_istanbul_time(dt_str):
+    dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+
+    return dt.astimezone(ZoneInfo("Europe/Istanbul")).isoformat()
+
 
 r = redis.Redis(
     host=REDIS_HOST,
@@ -44,5 +55,6 @@ def get_latest_price(symbol: str):
     return {
         "symbol": candle["symbol"],
         "price": candle["close_price"],
-        "time": candle["window_end"]
-    }
+        "time_utc": candle["window_end"],
+        "time_tr" : to_istanbul_time(candle["window_end"]),
+    }   
