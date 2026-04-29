@@ -24,6 +24,8 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092
+
     volumes:
       - kafka_data:/var/lib/kafka/data   
 
@@ -74,14 +76,46 @@ services:
     depends_on:
       - redis
 
-  redis-writer:
+  producer:
     image: python:3.12-slim
-    container_name: crypto_redis_writer
+    container_name: crypto_producer
     working_dir: /app
     volumes:
-      - ./redis:/app/redis
-    command: sh -c "pip install -r redis/requirements.txt && python redis/update_latest_candles.py"
+      - ./producer:/app/producer
+    command: sh -c "pip install -r producer/requirements.txt && python producer/binance_producer.py"
     environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: raw_trades
+    depends_on:
+      - kafka
+        
+  spark-debug:
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
+    container_name: crypto_spark_debug
+    working_dir: /app
+    volumes:
+      - ./spark:/app
+      - ./checkpoints:/app/checkpoints
+    env_file:
+      - .env
+    command: tail -f /dev/null
+
+  spark-processor:
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
+    container_name: crypto_spark_processor
+    working_dir: /app
+    volumes:
+      - ./spark:/app
+      - ./checkpoints:/app/checkpoints
+    env_file:
+      - .env
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: raw_trades
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB}
@@ -89,27 +123,12 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REFRESH_SECONDS: 5  
-    depends_on:
-      - postgres
-      - redis
-      
-  spark:
-    build:
-      context: ./spark
-      dockerfile: Dockerfile
-    container_name: crypto_spark
     depends_on:
       - kafka
       - postgres
-    env_file:
-      - .env
-    volumes:
-      - ./spark:/app
-      - ./checkpoints:/app/checkpoints
-    working_dir: /app
-    command: tail -f /dev/null
-    
+      - redis
+    command: python /app/stream_processor.py
+
 volumes:
   postgres_data:
   grafana_data:
