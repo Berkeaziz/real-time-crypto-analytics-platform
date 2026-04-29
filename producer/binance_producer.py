@@ -1,9 +1,10 @@
 import os
 import json
 import asyncio
-from datetime import datetime, timezone
-
+import time
 import websockets
+
+from datetime import datetime, timezone
 from confluent_kafka import Producer
 from dotenv import load_dotenv
 
@@ -11,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "raw_trades")
 BINANCE_WS_URL = os.getenv(
     "BINANCE_WS_URL",
@@ -33,7 +34,19 @@ def create_kafka_producer() -> Producer:
         "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
         "client.id": "binance-trade-producer",
     }
-    return Producer(config)
+
+    while True:
+        try:
+            producer = Producer(config)
+            producer.list_topics(timeout=5)
+
+            print("Kafka connected")
+            return producer
+
+        except Exception as e:
+            print(f"Kafka not ready: {e}")
+            print("retrying in 5 seconds...")
+            time.sleep(5)
 
 
 def normalize_trade_message(raw_message: dict) -> dict | None:
@@ -93,8 +106,9 @@ async def stream_binance_trades(producer):
                         value=json.dumps(normalized),
                     )
                     producer.poll(0)
-
+                    """
                     print(f"[produced] {normalized}")
+                    """
 
         except Exception as e:
             print("[WS] Reconnecting in 5 seconds...")
