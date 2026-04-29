@@ -39,12 +39,20 @@ from psycopg2.extras import execute_values
 
 load_dotenv()
 
-APP_NAME = os.getenv("SPARK_APP_NAME", "crypto-stream-processor")
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+APP_NAME = os.getenv("SPARK_APP_NAME")
+
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "raw_trades")
 
-REDIS_HOST = os.getenv("REDIS_HOST", "redis")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = int(os.getenv("REDIS_PORT"))
+
+POSTGRES_HOST = os.getenv("POSTGRES_HOST")
+POSTGRES_PORT = int(os.getenv("POSTGRES_PORT"))
+POSTGRES_DB = os.getenv("POSTGRES_DB")
+POSTGRES_USER= os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+POSTGRES_TABLE = os.getenv("POSTGRES_TABLE")
 
 
 def json_default(obj):
@@ -98,13 +106,16 @@ def build_spark_session() -> SparkSession:
 def write_raw_to_postgres(batch_df, batch_id):
     if batch_df.isEmpty():
         return
+    
+    jdbc_url = f"jdbc:postgresql://{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+
     (
         batch_df.write
         .format("jdbc")
-        .option("url", "jdbc:postgresql://postgres:5432/crypto")
-        .option("dbtable", "raw.trades")
-        .option("user", "crypto_user")
-        .option("password", "crypto_pass")
+        .option("url", jdbc_url)
+        .option("dbtable", POSTGRES_TABLE)
+        .option("user", POSTGRES_USER)
+        .option("password", POSTGRES_PASSWORD)
         .option("driver", "org.postgresql.Driver")
         .mode("append")
         .save()
@@ -129,11 +140,11 @@ def write_ohlcv_partition_to_postgres(rows_iter):
         return
 
     conn = psycopg2.connect(
-        host="postgres",
-        port=5432,
-        database="crypto",
-        user="crypto_user",
-        password="crypto_pass",
+        host=POSTGRES_HOST,
+        port=POSTGRES_PORT,
+        database=POSTGRES_DB,
+        user=POSTGRES_USER,
+        password=POSTGRES_PASSWORD,
     )
 
     insert_sql = """
