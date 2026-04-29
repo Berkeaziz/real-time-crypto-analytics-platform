@@ -9,17 +9,17 @@ A production-style, end-to-end streaming data platform that ingests live trade d
 ## Architecture Overview
 
 ```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 30, "rankSpacing": 40}, "themeVariables": {"fontSize": "13px"}} }%%
+%%{init: {"flowchart": {"nodeSpacing": 20, "rankSpacing": 30}, "themeVariables": {"fontSize": "12px"}} }%%
 flowchart LR
-    A["Binance WS"] -->|JSON| B["Kafka\nraw_trades"]
-    B -->|streaming| C["Spark"]
-    C -->|append| D["PG\nraw.trades"]
-    C -->|upsert| E["PG\nohlcv_10s"]
-    C -->|latest| F["Redis"]
-    D -->|dbt| G["stg_trades"]
-    E -->|dbt| H["fct_ohlcv_10s"]
-    H -->|SQL| I["Grafana"]
-    F -->|GET| J["FastAPI"]
+    A["Binance WS"] --> B["Kafka"]
+    B --> C["Spark"]
+    C --> D["PG raw"]
+    C --> E["PG marts"]
+    C --> F["Redis"]
+    D --> G["stg_trades"]
+    E --> H["fct_ohlcv_10s"]
+    H --> I["Grafana"]
+    F --> J["FastAPI"]
 ```
 
 ---
@@ -43,21 +43,21 @@ flowchart LR
 ## Data Flow
 
 ```mermaid
-%%{init: {"themeVariables": {"fontSize": "13px"}} }%%
+%%{init: {"themeVariables": {"fontSize": "12px"}} }%%
 sequenceDiagram
     participant B as Binance
     participant K as Kafka
     participant S as Spark
-    participant PG as Postgres
+    participant P as Postgres
     participant R as Redis
-    participant A as FastAPI
-    B->>K: trade event (JSON)
+    participant A as API
+    B->>K: trade (JSON)
     K->>S: micro-batch
-    S->>PG: append raw.trades
-    S->>PG: upsert ohlcv_10s
-    S->>R: SET latest_candle
-    A->>R: GET latest_candle
-    A-->>A: return price + TR time
+    S->>P: raw.trades
+    S->>P: ohlcv_10s
+    S->>R: latest_candle
+    A->>R: GET candle
+    A-->>A: price + TR time
 ```
 
 ---
@@ -65,30 +65,11 @@ sequenceDiagram
 ## Database Schema
 
 ```mermaid
-%%{init: {"themeVariables": {"fontSize": "13px"}} }%%
-erDiagram
-    RAW_TRADES {
-        bigserial id PK
-        varchar symbol
-        numeric price
-        numeric quantity
-        timestamptz trade_time
-        timestamptz event_time
-        timestamptz ingested_at
-    }
-    OHLCV_10S {
-        bigserial id PK
-        varchar symbol
-        timestamptz window_start
-        timestamptz window_end
-        numeric open_price
-        numeric high_price
-        numeric low_price
-        numeric close_price
-        numeric volume
-        bigint trade_count
-    }
-    RAW_TRADES ||--o{ OHLCV_10S : "aggregated into"
+%%{init: {"flowchart": {"nodeSpacing": 20, "rankSpacing": 35}, "themeVariables": {"fontSize": "12px"}} }%%
+flowchart LR
+    RT["raw.trades\n─────────\nsymbol\nprice · qty\ntrade_time\nevent_time\ningested_at"]
+    OH["marts.ohlcv_10s\n─────────\nsymbol\nwindow_start/end\nopen/high/low/close\nvolume · trade_count"]
+    RT -->|"aggregated into"| OH
 ```
 
 ---
@@ -232,3 +213,7 @@ Measured streaming latency from OHLCV `window_end` to PostgreSQL write timestamp
 **Fallback writer** — `update_latest_candles.py` can re-sync Redis from PostgreSQL independently of Spark, useful during restarts or debugging.
 
 ---
+
+## License
+
+MIT
