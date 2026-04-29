@@ -12,12 +12,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "raw_trades")
-BINANCE_WS_URL = os.getenv(
-    "BINANCE_WS_URL",
-    "wss://stream.binance.com:9443/stream?streams=btcusdt@trade/ethusdt@trade/solusdt@trade",
-)
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
+BINANCE_WS_URL = os.getenv("BINANCE_WS_URL")
 
 
 def delivery_report(err, msg):
