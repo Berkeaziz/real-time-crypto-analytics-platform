@@ -62,12 +62,10 @@ services:
       - grafana_data:/var/lib/grafana
 
   api:
-    image: python:3.12-slim
+    build:
+      context: ./api
+      dockerfile: Dockerfile
     container_name: crypto_api
-    working_dir: /app
-    volumes:
-      - ./api:/app/api
-    command: sh -c "pip install -r api/requirements.txt && uvicorn api.main:app --host 0.0.0.0 --port 8000"
     ports:
       - "${API_PORT}:8000"
     environment:
@@ -77,12 +75,10 @@ services:
       - redis
 
   producer:
-    image: python:3.12-slim
+    build:
+      context: ./producer
+      dockerfile: Dockerfile
     container_name: crypto_producer
-    working_dir: /app
-    volumes:
-      - ./producer:/app/producer
-    command: sh -c "pip install -r producer/requirements.txt && python producer/binance_producer.py"
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_TOPIC: raw_trades
@@ -122,8 +118,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_TABLE: raw.trades
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      SPARK_APP_NAME: crypto-stream-processor
     depends_on:
       - kafka
       - postgres
