@@ -3,6 +3,7 @@ import redis
 import psycopg2
 import json
 
+from pyspark.sql.window import Window
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col, 
@@ -17,6 +18,7 @@ from pyspark.sql.functions import (
     count,
     first,
     last,
+    row_number,
 )
 
 
@@ -58,31 +60,38 @@ def write_latest_ohlcv_to_redis(batch_df, batch_id):
         print(f"Batch {batch_id}: empty batch, skipping Redis write")
         return
 
-    r =redis.Redis(
+    w = Window.partitionBy("symbol").orderBy(col("window_start").desc())
+
+    latest_df = (
+        batch_df
+        .withColumn("rn", row_number().over(w))
+        .filter(col("rn") == 1)
+        .drop("rn")
+    )
+
+    latest_df.foreachPartition(write_latest_redis_partition)
+
+    print(f"Batch {batch_id}: Redis latest candles updated")
+
+def write_latest_redis_partition(rows_iter):
+
+    r = redis.Redis(
         host=REDIS_HOST,
         port=REDIS_PORT,
         decode_responses=True,
     )
 
-    latest_df =(
-        batch_df
-        .orderBy("symbol",batch_df.window_start.desc())
-        .dropDuplicates(["symbol"])
-    )
-
-    rows = latest_df.collect()
-
-    for row in rows:
-        data=row.asDict(recursive=True)
+    for row in rows_iter:
+        data = row.asDict(recursive=True)
         key = f"latest_candle:{data['symbol']}"
         r.set(key, json.dumps(data, default=json_default))
-        print(f"Batch {batch_id}: updated Redis key {key}")
 
 def build_spark_session() -> SparkSession:
     return (
         SparkSession.builder
         .appName(APP_NAME)
         .config("spark.jars", "/tmp/postgresql.jar")
+        .config("spark.sql.shuffle.partitions", "2")
         .getOrCreate()
     )
 
@@ -100,13 +109,7 @@ def write_raw_to_postgres(batch_df, batch_id):
         .mode("append")
         .save()
     )
-
-def write_ohlcv_to_postgres(batch_df, batch_id):
-    rows = batch_df.collect()
-
-    if not rows:
-        return
-
+def write_ohlcv_partition_to_postgres(rows_iter):
     values = [
         (
             row["symbol"],
@@ -119,8 +122,11 @@ def write_ohlcv_to_postgres(batch_df, batch_id):
             row["volume"],
             row["trade_count"],
         )
-        for row in rows
+        for row in rows_iter
     ]
+
+    if not values:
+        return
 
     conn = psycopg2.connect(
         host="postgres",
@@ -163,11 +169,17 @@ def write_ohlcv_to_postgres(batch_df, batch_id):
                     cursor,
                     insert_sql,
                     values,
-                    template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())",
+                    template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())",
                     page_size=1000,
                 )
     finally:
         conn.close()
+
+def write_ohlcv_to_postgres(batch_df, batch_id):
+    if batch_df.isEmpty():
+        return
+
+    batch_df.foreachPartition(write_ohlcv_partition_to_postgres)
 
     write_latest_ohlcv_to_redis(batch_df, batch_id)
 
@@ -245,7 +257,7 @@ def main():
         parsed_df.writeStream
         .foreachBatch(write_raw_to_postgres)
         .outputMode("append")
-        .option("checkpointLocation", "/tmp/checkpoints/raw_trades_to_postgres_v2")
+        .option("checkpointLocation", "/tmp/checkpoints/raw_trades_to_postgres_v3")
         .start()
     )
 
@@ -253,8 +265,8 @@ def main():
         ohlcv_10s_df.writeStream
         .foreachBatch(write_ohlcv_to_postgres)
         .outputMode("update")
-        .trigger(processingTime="2 seconds")
-        .option("checkpointLocation", "/app/checkpoints/ohlcv_10s_v2")
+        .trigger(processingTime="10 seconds")
+        .option("checkpointLocation", "/app/checkpoints/ohlcv_10s_v3")
         .start()
         )
     
