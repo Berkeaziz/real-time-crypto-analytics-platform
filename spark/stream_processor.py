@@ -32,7 +32,7 @@ from pyspark.sql.types import (
 from decimal import Decimal
 from datetime import datetime
 from dotenv import load_dotenv
-from psycopg2.extras import execute_batch
+from psycopg2.extras import execute_values
 
 
 load_dotenv()
@@ -107,6 +107,21 @@ def write_ohlcv_to_postgres(batch_df, batch_id):
     if not rows:
         return
 
+    values = [
+        (
+            row["symbol"],
+            row["window_start"],
+            row["window_end"],
+            row["open_price"],
+            row["high_price"],
+            row["low_price"],
+            row["close_price"],
+            row["volume"],
+            row["trade_count"],
+        )
+        for row in rows
+    ]
+
     conn = psycopg2.connect(
         host="postgres",
         port=5432,
@@ -115,9 +130,7 @@ def write_ohlcv_to_postgres(batch_df, batch_id):
         password="crypto_pass",
     )
 
-    cursor = conn.cursor()
-
-    upsert_sql = """
+    insert_sql = """
     INSERT INTO marts.ohlcv_10s (
         symbol,
         window_start,
@@ -130,7 +143,7 @@ def write_ohlcv_to_postgres(batch_df, batch_id):
         trade_count,
         created_at
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+    VALUES %s
     ON CONFLICT (symbol, window_start, window_end)
     DO UPDATE SET
         open_price = EXCLUDED.open_price,
@@ -142,25 +155,19 @@ def write_ohlcv_to_postgres(batch_df, batch_id):
         created_at = NOW();
     """
 
-    for row in rows:
-        cursor.execute(
-            upsert_sql,
-            (
-                row["symbol"],
-                row["window_start"],
-                row["window_end"],
-                row["open_price"],
-                row["high_price"],
-                row["low_price"],
-                row["close_price"],
-                row["volume"],
-                row["trade_count"],
-            ),
-        )
+    try:
+        with conn:
+            with conn.cursor() as cursor:
+                execute_values(
+                    cursor,
+                    insert_sql,
+                    values,
+                    template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())",
+                    page_size=1000,
+                )
+    finally:
+        conn.close()
 
-    conn.commit()
-    cursor.close()
-    conn.close()
     write_latest_ohlcv_to_redis(batch_df, batch_id)
 
 def get_trade_schema() -> StructType:
