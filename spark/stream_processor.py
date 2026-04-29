@@ -103,6 +103,8 @@ def build_spark_session() -> SparkSession:
         .getOrCreate()
     )
 
+# Uses Spark JDBC writer — simple append, no conflict handling needed.
+# OHLCV writes use psycopg2 directly to support ON CONFLICT DO UPDATE.
 def write_raw_to_postgres(batch_df, batch_id):
     if batch_df.isEmpty():
         return
