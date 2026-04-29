@@ -141,7 +141,8 @@ def write_ohlcv_to_postgres(batch_df, batch_id):
         close_price,
         volume,
         trade_count,
-        created_at
+        created_at,
+        updated_at
     )
     VALUES %s
     ON CONFLICT (symbol, window_start, window_end)
@@ -152,7 +153,7 @@ def write_ohlcv_to_postgres(batch_df, batch_id):
         close_price = EXCLUDED.close_price,
         volume = EXCLUDED.volume,
         trade_count = EXCLUDED.trade_count,
-        created_at = NOW();
+        updated_at = NOW();
     """
 
     try:
@@ -212,7 +213,7 @@ def main():
 
     ohlcv_10s_df = (
         parsed_df
-        .withWatermark("trade_time", "10 seconds")
+        .withWatermark("trade_time", "5 seconds")
         .groupBy(
             window(col("trade_time"), "10 seconds"),
             col("symbol")
