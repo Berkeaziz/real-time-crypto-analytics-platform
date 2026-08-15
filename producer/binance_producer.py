@@ -168,15 +168,24 @@ async def stream_binance_trades(producer):
             )
 
 
-if __name__ =="__main__":
+if __name__ == "__main__":
     producer = create_kafka_producer()
 
     try:
         asyncio.run(stream_binance_trades(producer))
 
     except KeyboardInterrupt:
-        print("Producer stopped by user")
+        print("[Producer] Stopped by user.")
 
     finally:
-        print("Flushing Kafka producer...")
-        producer.flush()
+        print("[Kafka] Flushing pending messages...")
+
+        remaining_messages = producer.flush(10)
+
+        if remaining_messages == 0:
+            print("[Kafka] Flush completed.")
+        else:
+            print(
+                f"[Kafka] Flush timeout: "
+                f"{remaining_messages} message(s) still pending."
+            )
