@@ -27,9 +27,29 @@ def delivery_report(err, msg):
 
 
 def create_kafka_producer() -> Producer:
+    """Create and return a configured Kafka producer."""
+
     config = {
+        # Initial broker addresses used to discover the Kafka cluster.
         "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
+
+        # Identifies this producer in Kafka logs and monitoring tools.
         "client.id": "binance-trade-producer",
+
+        # Prevents duplicate records caused by producer retries.
+        "enable.idempotence": True,
+
+        # Waits for acknowledgments from all required in-sync replicas.
+        "acks": "all",
+
+        # Retries delivery up to 10 times for retriable errors.
+        "retries": 10,
+
+        # Waits 500 milliseconds between retry attempts.
+        "retry.backoff.ms": 500,
+
+        # Fails delivery if it cannot complete within 120 seconds.
+        "delivery.timeout.ms": 120000,
     }
 
     while True:
