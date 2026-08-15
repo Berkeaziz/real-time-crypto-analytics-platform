@@ -67,41 +67,57 @@ def create_kafka_producer() -> Producer:
 
 
 def normalize_trade_message(raw_message: dict) -> dict | None:
-    """
-    Binance combined stream message example:
-    {
-      "stream": "btcusdt@trade",
-      "data": {...}
-    }
-    """
-    data = raw_message.get("data")
-    if not data:
+    if not isinstance(raw_message, dict):
+        print("[Message Rejected] Message is not a JSON object")
         return None
 
-    event_time_ms = data.get("E")
-    trade_time_ms = data.get("T")
+    data = raw_message.get("data")
 
-    normalized = {
-        "event_type": data.get("e"),
-        "symbol": data.get("s"),
-        "trade_id": data.get("t"),
-        "price": float(data.get("p")),
-        "quantity": float(data.get("q")),
-        "trade_time": (
-            datetime.fromtimestamp(trade_time_ms / 1000, tz=timezone.utc).isoformat()
-            if trade_time_ms
-            else None
-        ),
-        "event_time": (
-            datetime.fromtimestamp(event_time_ms / 1000, tz=timezone.utc).isoformat()
-            if event_time_ms
-            else None
-        ),
-        "is_buyer_maker": data.get("m"),
-        "source": "binance",
-    }
+    if not isinstance(data, dict):
+        print("[Message Rejected] Missing or invalid data field")
+        return None
+
+    required_fields = ("e", "E", "s", "t", "p", "q", "T", "m")
+
+    missing_fields = [
+        field
+        for field in required_fields
+        if data.get(field) is None
+    ]
+
+    if missing_fields:
+        print(
+            f"[Message Rejected] Missing fields: {missing_fields}"
+        )
+        return None
+
+    try:
+        normalized = {
+            "event_type": data["e"],
+            "symbol": data["s"],
+            "trade_id": data["t"],
+            "price": float(data["p"]),
+            "quantity": float(data["q"]),
+            "trade_time": datetime.fromtimestamp(
+                data["T"] / 1000,
+                tz=timezone.utc,
+            ).isoformat(),
+            "event_time": datetime.fromtimestamp(
+                data["E"] / 1000,
+                tz=timezone.utc,
+            ).isoformat(),
+            "is_buyer_maker": data["m"],
+            "source": "binance",
+        }
+
+    except (TypeError, ValueError, OverflowError) as e:
+        print(
+            f"[Message Rejected] Invalid field value: "
+            f"{type(e).__name__}: {e}"
+        )
+        return None
+
     return normalized
-
 
 async def stream_binance_trades(producer):
     retry_delay = 1
@@ -121,7 +137,12 @@ async def stream_binance_trades(producer):
                 async for message in ws:
                     retry_delay = 1
 
-                    raw_message = json.loads(message)
+                    try:
+                        raw_message = json.loads(message)
+                    except json.JSONDecodeError as e:
+                        print(f"[Message Rejected] Invalid JSON: {e}")
+                        continue
+
                     normalized = normalize_trade_message(raw_message)
 
                     if normalized is None:
