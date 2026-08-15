@@ -101,6 +101,7 @@ async def stream_binance_trades(producer):
                         topic=KAFKA_TOPIC,
                         key=normalized["symbol"],
                         value=json.dumps(normalized),
+                        callback=delivery_report,
                     )
                     producer.poll(0)
                     """
