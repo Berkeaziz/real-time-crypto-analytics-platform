@@ -129,6 +129,7 @@ async def stream_binance_trades(producer):
                     """
 
         except Exception as e:
+            print(f"[WS] Error: {type(e).__name__}: {e}")
             print("[WS] Reconnecting in 5 seconds...")
             await asyncio.sleep(5)
 
