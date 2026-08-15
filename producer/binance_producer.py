@@ -104,13 +104,23 @@ def normalize_trade_message(raw_message: dict) -> dict | None:
 
 
 async def stream_binance_trades(producer):
+    retry_delay = 1
+    max_retry_delay = 60
+
     while True:
         try:
             print(f"[WS] Connecting to {BINANCE_WS_URL}")
-            async with websockets.connect(BINANCE_WS_URL, ping_interval=20, ping_timeout=20) as ws:
+
+            async with websockets.connect(
+                BINANCE_WS_URL,
+                ping_interval=20,
+                ping_timeout=20,
+            ) as ws:
                 print("[WS] Connected to Binance stream.")
 
                 async for message in ws:
+                    retry_delay = 1
+
                     raw_message = json.loads(message)
                     normalized = normalize_trade_message(raw_message)
 
@@ -124,14 +134,18 @@ async def stream_binance_trades(producer):
                         callback=delivery_report,
                     )
                     producer.poll(0)
-                    """
-                    print(f"[produced] {normalized}")
-                    """
 
         except Exception as e:
             print(f"[WS] Error: {type(e).__name__}: {e}")
-            print("[WS] Reconnecting in 5 seconds...")
-            await asyncio.sleep(5)
+            print(f"[WS] Reconnecting in {retry_delay} seconds...")
+
+            await asyncio.sleep(retry_delay)
+
+            retry_delay = min(
+                retry_delay * 2,
+                max_retry_delay,
+            )
+
 
 if __name__ =="__main__":
     producer = create_kafka_producer()
