@@ -270,7 +270,7 @@ def main():
         parsed_df.writeStream
         .foreachBatch(write_raw_to_postgres)
         .outputMode("append")
-        .option("checkpointLocation", "/tmp/checkpoints/raw_trades_to_postgres_v3")
+        .option("checkpointLocation", "/app/checkpoints/raw_trades_to_postgres_v3")
         .start()
     )
 
