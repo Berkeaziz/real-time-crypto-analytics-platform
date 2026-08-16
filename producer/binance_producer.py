@@ -16,6 +16,20 @@ KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
 BINANCE_WS_URL = os.getenv("BINANCE_WS_URL")
 
+def build_dlq_record(
+    original_message: str,
+    error_type: str,
+    error_reason: str,
+) -> dict:
+    return {
+        "schema_version": 1,
+        "failed_at": datetime.now(timezone.utc).isoformat(),
+        "stage": "producer",
+        "source": "binance",
+        "error_type": error_type,
+        "error_reason": error_reason,
+        "original_message": original_message,
+    }
 
 def delivery_report(err, msg):
     if err is not None:
