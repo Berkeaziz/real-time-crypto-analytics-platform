@@ -103,25 +103,77 @@ def build_spark_session() -> SparkSession:
         .getOrCreate()
     )
 
+
+def write_raw_partition_to_postgres(rows_iter):
+    values = [
+        (
+            row["event_type"],
+            row["symbol"],
+            row["trade_id"],
+            row["price"],
+            row["quantity"],
+            row["trade_time"],
+            row["event_time"],
+            row["is_buyer_maker"],
+            row["source"],
+            row["ingested_at"],
+        )
+        for row in rows_iter
+    ]
+
+    if not values:
+        return
+
+    conn = psycopg2.connect(
+        host=POSTGRES_HOST,
+        port=POSTGRES_PORT,
+        database=POSTGRES_DB,
+        user=POSTGRES_USER,
+        password=POSTGRES_PASSWORD,
+    )
+
+    insert_sql = """
+    INSERT INTO raw.trades (
+        event_type,
+        symbol,
+        trade_id,
+        price,
+        quantity,
+        trade_time,
+        event_time,
+        is_buyer_maker,
+        source,
+        ingested_at
+    )
+    VALUES %s
+    ON CONFLICT (source, symbol, trade_id)
+    DO NOTHING;
+    """
+
+    try:
+        with conn:
+            with conn.cursor() as cursor:
+                execute_values(
+                    cursor,
+                    insert_sql,
+                    values,
+                    page_size=1000,
+                )
+    finally:
+        conn.close()
+
 # Uses Spark JDBC writer — simple append, no conflict handling needed.
 # OHLCV writes use psycopg2 directly to support ON CONFLICT DO UPDATE.
 def write_raw_to_postgres(batch_df, batch_id):
     if batch_df.isEmpty():
+        print(f"Batch {batch_id}: empty batch, skipping raw write")
         return
-    
-    jdbc_url = f"jdbc:postgresql://{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
-    (
-        batch_df.write
-        .format("jdbc")
-        .option("url", jdbc_url)
-        .option("dbtable", POSTGRES_TABLE)
-        .option("user", POSTGRES_USER)
-        .option("password", POSTGRES_PASSWORD)
-        .option("driver", "org.postgresql.Driver")
-        .mode("append")
-        .save()
-    )
+    batch_df.foreachPartition(write_raw_partition_to_postgres)
+
+    print(f"Batch {batch_id}: raw trades written to PostgreSQL")
+
+    
 def write_ohlcv_partition_to_postgres(rows_iter):
     values = [
         (
