@@ -14,7 +14,49 @@ load_dotenv()
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
+KAFKA_DLQ_TOPIC = os.getenv(
+    "KAFKA_DLQ_TOPIC",
+    "raw_trades_dlq",
+)
 BINANCE_WS_URL = os.getenv("BINANCE_WS_URL")
+
+def process_trade_message(
+    producer: Producer,
+    message: str,
+) -> None:
+    try:
+        raw_message = json.loads(message)
+
+    except json.JSONDecodeError as e:
+        print(f"[Message Rejected] Invalid JSON: {e}")
+
+        dlq_record = build_dlq_record(
+            original_message=message,
+            error_type="invalid_json",
+            error_reason=str(e),
+        )
+
+        publish_dlq_record(
+            producer,
+            dlq_record,
+        )
+        return
+
+    normalized = normalize_trade_message(raw_message)
+
+    if normalized is None:
+        return
+
+    producer.produce(
+        topic=KAFKA_TOPIC,
+        key=normalized["symbol"],
+        value=json.dumps(normalized),
+        callback=delivery_report,
+    )
+    producer.poll(0)
+
+
+
 
 def build_dlq_record(
     original_message: str,
@@ -39,6 +81,17 @@ def delivery_report(err, msg):
             f"[Kafka Delivered] topic={msg.topic()} partition={msg.partition()} offset={msg.offset()}"
         )
 
+def publish_dlq_record(
+    producer: Producer,
+    dlq_record: dict,
+) -> None:
+    producer.produce(
+        topic=KAFKA_DLQ_TOPIC,
+        value=json.dumps(dlq_record),
+        callback=delivery_report,
+    )
+
+    producer.poll(0)
 
 def create_kafka_producer() -> Producer:
     """Create and return a configured Kafka producer."""
@@ -161,7 +214,7 @@ async def stream_binance_trades(producer):
 
                     if normalized is None:
                         continue
-
+                    
                     producer.produce(
                         topic=KAFKA_TOPIC,
                         key=normalized["symbol"],
