@@ -42,7 +42,24 @@ def process_trade_message(
         )
         return
 
-    normalized = normalize_trade_message(raw_message)
+    try:
+        normalized = normalize_trade_message(
+            raw_message,
+            raise_on_error=True,
+        )
+
+    except TradeValidationError as e:
+        dlq_record = build_dlq_record(
+            original_message=message,
+            error_type=e.error_type,
+            error_reason=e.error_reason,
+        )
+
+        publish_dlq_record(
+            producer,
+            dlq_record,
+        )
+        return
 
     if normalized is None:
         return
@@ -54,9 +71,6 @@ def process_trade_message(
         callback=delivery_report,
     )
     producer.poll(0)
-
-
-
 
 def build_dlq_record(
     original_message: str,
@@ -72,6 +86,17 @@ def build_dlq_record(
         "error_reason": error_reason,
         "original_message": original_message,
     }
+
+class TradeValidationError(Exception):
+    def __init__(
+        self,
+        error_type: str,
+        error_reason: str,
+    ):
+        super().__init__(error_reason)
+        self.error_type = error_type
+        self.error_reason = error_reason
+
 
 def delivery_report(err, msg):
     if err is not None:
@@ -133,7 +158,7 @@ def create_kafka_producer() -> Producer:
             time.sleep(5)
 
 
-def normalize_trade_message(raw_message: dict) -> dict | None:
+def normalize_trade_message(raw_message:dict,*,raise_on_error:bool = False,) -> dict | None:
     if not isinstance(raw_message, dict):
         print("[Message Rejected] Message is not a JSON object")
         return None
@@ -153,9 +178,15 @@ def normalize_trade_message(raw_message: dict) -> dict | None:
     ]
 
     if missing_fields:
-        print(
-            f"[Message Rejected] Missing fields: {missing_fields}"
-        )
+        error_reason = f"Missing fields: {missing_fields}"
+
+        if raise_on_error:
+            raise TradeValidationError(
+                error_type="missing_fields",
+                error_reason=error_reason,
+            )
+
+        print(f"[Message Rejected] {error_reason}")
         return None
 
     try:
@@ -204,28 +235,17 @@ async def stream_binance_trades(producer):
                 async for message in ws:
                     retry_delay = 1
 
-                    try:
-                        raw_message = json.loads(message)
-                    except json.JSONDecodeError as e:
-                        print(f"[Message Rejected] Invalid JSON: {e}")
-                        continue
-
-                    normalized = normalize_trade_message(raw_message)
-
-                    if normalized is None:
-                        continue
-                    
-                    producer.produce(
-                        topic=KAFKA_TOPIC,
-                        key=normalized["symbol"],
-                        value=json.dumps(normalized),
-                        callback=delivery_report,
+                    process_trade_message(
+                        producer,
+                        message,
                     )
-                    producer.poll(0)
 
         except Exception as e:
             print(f"[WS] Error: {type(e).__name__}: {e}")
-            print(f"[WS] Reconnecting in {retry_delay} seconds...")
+            print(
+                f"[WS] Reconnecting in "
+                f"{retry_delay} seconds..."
+            )
 
             await asyncio.sleep(retry_delay)
 
