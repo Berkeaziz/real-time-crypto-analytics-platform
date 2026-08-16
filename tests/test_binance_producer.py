@@ -1,5 +1,23 @@
+from datetime import datetime
+import producer.binance_producer as producer_module
 from producer.binance_producer import normalize_trade_message
 
+def test_builds_dlq_record_for_invalid_json():
+    result = producer_module.build_dlq_record(
+        original_message="{invalid-json",
+        error_type="invalid_json",
+        error_reason="JSON could not be decoded",
+    )
+
+    assert result["schema_version"] == 1
+    assert result["stage"] == "producer"
+    assert result["source"] == "binance"
+    assert result["error_type"] == "invalid_json"
+    assert result["error_reason"] == "JSON could not be decoded"
+    assert result["original_message"] == "{invalid-json"
+
+    failed_at = datetime.fromisoformat(result["failed_at"])
+    assert failed_at.tzinfo is not None
 
 def valid_message():
     return {
