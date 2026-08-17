@@ -160,7 +160,15 @@ def create_kafka_producer() -> Producer:
 
 def normalize_trade_message(raw_message:dict,*,raise_on_error:bool = False,) -> dict | None:
     if not isinstance(raw_message, dict):
-        print("[Message Rejected] Message is not a JSON object")
+        error_reason = "Message is not a JSON object"
+
+        if raise_on_error:
+            raise TradeValidationError(
+                error_type="invalid_message_type",
+                error_reason=error_reason,
+            )
+
+        print(f"[Message Rejected] {error_reason}")
         return None
 
     data = raw_message.get("data")
