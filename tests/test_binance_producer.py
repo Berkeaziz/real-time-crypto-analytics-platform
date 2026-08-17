@@ -4,6 +4,66 @@ from datetime import datetime
 import producer.binance_producer as producer_module
 from producer.binance_producer import normalize_trade_message
 
+
+
+def test_routes_valid_message_to_raw_trades_topic(monkeypatch):
+    class FakeProducer:
+        def __init__(self):
+            self.produced_messages = []
+            self.poll_calls = []
+
+        def produce(self, **kwargs):
+            self.produced_messages.append(kwargs)
+
+        def poll(self, timeout):
+            self.poll_calls.append(timeout)
+
+    fake_producer = FakeProducer()
+
+    monkeypatch.setattr(
+        producer_module,
+        "KAFKA_TOPIC",
+        "raw_trades",
+    )
+
+    monkeypatch.setattr(
+        producer_module,
+        "KAFKA_DLQ_TOPIC",
+        "raw_trades_dlq",
+    )
+
+    message = json.dumps({
+        "data": {
+            "e": "trade",
+            "E": 1755338400000,
+            "s": "BTCUSDT",
+            "t": 123456,
+            "p": "60000.50",
+            "q": "0.001",
+            "T": 1755338400000,
+            "m": False,
+        }
+    })
+
+    producer_module.process_trade_message(
+        fake_producer,
+        message,
+    )
+
+    assert len(fake_producer.produced_messages) == 1
+
+    produced_message = fake_producer.produced_messages[0]
+    normalized_message = json.loads(
+        produced_message["value"]
+    )
+
+    assert produced_message["topic"] == "raw_trades"
+    assert produced_message["key"] == "BTCUSDT"
+    assert normalized_message["symbol"] == "BTCUSDT"
+    assert normalized_message["price"] == 60000.50
+    assert normalized_message["quantity"] == 0.001
+    assert fake_producer.poll_calls == [0]
+
 def test_routes_message_without_data_field_to_dlq(monkeypatch):
     class FakeProducer:
         def __init__(self):
