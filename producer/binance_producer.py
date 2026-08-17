@@ -174,7 +174,15 @@ def normalize_trade_message(raw_message:dict,*,raise_on_error:bool = False,) -> 
     data = raw_message.get("data")
 
     if not isinstance(data, dict):
-        print("[Message Rejected] Missing or invalid data field")
+        error_reason = "Missing or invalid data field"
+
+        if raise_on_error:
+            raise TradeValidationError(
+                error_type="invalid_data_field",
+                error_reason=error_reason,
+            )
+
+        print(f"[Message Rejected] {error_reason}")
         return None
 
     required_fields = ("e", "E", "s", "t", "p", "q", "T", "m")
