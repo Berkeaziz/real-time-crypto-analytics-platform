@@ -4,7 +4,7 @@ from datetime import datetime
 import producer.binance_producer as producer_module
 from producer.binance_producer import normalize_trade_message
 
-def test_routes_message_with_missing_field_to_dlq(monkeypatch):
+def test_routes_message_with_invalid_price_to_dlq(monkeypatch):
     class FakeProducer:
         def __init__(self):
             self.produced_messages = []
@@ -29,11 +29,10 @@ def test_routes_message_with_missing_field_to_dlq(monkeypatch):
             "E": 1755338400000,
             "s": "BTCUSDT",
             "t": 123456,
-            "p": "60000.50",
+            "p": "not-a-number",
             "q": "0.001",
             "T": 1755338400000,
-
-            # m ?
+            "m": False,
         }
     })
 
@@ -48,10 +47,9 @@ def test_routes_message_with_missing_field_to_dlq(monkeypatch):
     dlq_record = json.loads(produced_message["value"])
 
     assert produced_message["topic"] == "raw_trades_dlq"
-    assert dlq_record["error_type"] == "missing_fields"
+    assert dlq_record["error_type"] == "invalid_field_value"
     assert dlq_record["original_message"] == message
-    assert "m" in dlq_record["error_reason"]
-
+    assert dlq_record["error_reason"]
 
 def test_routes_invalid_json_to_dlq(monkeypatch):
     class FakeProducer:

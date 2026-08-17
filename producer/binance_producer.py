@@ -209,9 +209,16 @@ def normalize_trade_message(raw_message:dict,*,raise_on_error:bool = False,) -> 
         }
 
     except (TypeError, ValueError, OverflowError) as e:
+        error_reason = f"{type(e).__name__}:{e}"
+
+        if raise_on_error:
+            raise TradeValidationError(
+                error_type="invalid_field_value",
+                error_reason=error_reason,
+            )from e
+
         print(
-            f"[Message Rejected] Invalid field value: "
-            f"{type(e).__name__}: {e}"
+            f"[Message Rejected] Invalid field value:"
         )
         return None
 
