@@ -218,7 +218,7 @@ def normalize_trade_message(raw_message:dict,*,raise_on_error:bool = False,) -> 
             )from e
 
         print(
-            f"[Message Rejected] Invalid field value:"
+            f"[Message Rejected] Invalid field value"
         )
         return None
 

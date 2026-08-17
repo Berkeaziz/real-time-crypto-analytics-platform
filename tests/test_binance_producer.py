@@ -4,6 +4,44 @@ from datetime import datetime
 import producer.binance_producer as producer_module
 from producer.binance_producer import normalize_trade_message
 
+
+
+def test_routes_non_object_json_to_dlq(monkeypatch):
+    class FakeProducer:
+        def __init__(self):
+            self.produced_messages = []
+
+        def produce(self, **kwargs):
+            self.produced_messages.append(kwargs)
+
+        def poll(self, timeout):
+            pass
+
+    fake_producer = FakeProducer()
+
+    monkeypatch.setattr(
+        producer_module,
+        "KAFKA_DLQ_TOPIC",
+        "raw_trades_dlq",
+    )
+
+    message = "null"
+
+    producer_module.process_trade_message(
+        fake_producer,
+        message,
+    )
+
+    assert len(fake_producer.produced_messages) == 1
+
+    produced_message = fake_producer.produced_messages[0]
+    dlq_record = json.loads(produced_message["value"])
+
+    assert produced_message["topic"] == "raw_trades_dlq"
+    assert dlq_record["error_type"] == "invalid_message_type"
+    assert dlq_record["original_message"] == message
+    assert dlq_record["error_reason"]
+
 def test_routes_message_with_invalid_price_to_dlq(monkeypatch):
     class FakeProducer:
         def __init__(self):
