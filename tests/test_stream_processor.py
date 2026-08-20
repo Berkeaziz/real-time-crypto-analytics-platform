@@ -12,6 +12,10 @@ def spark_session():
         .appName("stream-processor-tests")
         .config("spark.ui.enabled", "false")
         .config("spark.sql.shuffle.partitions", "1")
+        .config(
+            "spark.sql.warehouse.dir",
+            "/tmp/spark-warehouse-tests",
+        )
         .getOrCreate()
     )
 

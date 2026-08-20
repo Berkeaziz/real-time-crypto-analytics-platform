@@ -90,11 +90,14 @@ services:
     build:
       context: ./spark
       dockerfile: Dockerfile
+      args: 
+        INSTALL_DEV: "true"
     container_name: crypto_spark_debug
     working_dir: /app
     volumes:
       - ./spark:/app
       - ./checkpoints:/app/checkpoints
+      - ./:/workspace:ro
     env_file:
       - .env
     command: tail -f /dev/null
@@ -135,3 +138,4 @@ volumes:
   zookeeper_log:
   kafka_data:
   redis_data:
+
