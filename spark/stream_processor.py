@@ -19,6 +19,7 @@ from pyspark.sql.functions import (
     first,
     last,
     row_number,
+    lit,
 )
 
 
@@ -261,6 +262,80 @@ def get_trade_schema() -> StructType:
         StructField("source", StringType(), True),
         StructField("ingested_at", StringType(), True),
     ])
+
+def split_trade_records(raw_df, schema):
+    parsing_schema = StructType([
+        *schema.fields,
+        StructField(
+            "_corrupt_record",
+            StringType(),
+            True,
+        ),
+    ])
+
+    parsed_with_raw_df = (
+        raw_df
+        .selectExpr(
+            "CAST(value AS STRING) AS original_message"
+        )
+        .withColumn(
+            "data",
+            from_json(
+                col("original_message"),
+                parsing_schema,
+                {
+                    "mode": "PERMISSIVE",
+                    "columnNameOfCorruptRecord": "_corrupt_record",
+                },
+            ),
+        )
+    )
+
+    valid_df = (
+        parsed_with_raw_df
+        .filter(
+            col("data._corrupt_record").isNull()
+        )
+        .select(
+            *[
+                col(f"data.{field.name}").alias(field.name)
+                for field in schema.fields
+            ]
+        )
+        .withColumn(
+            "trade_time",
+            to_timestamp("trade_time"),
+        )
+        .withColumn(
+            "event_time",
+            to_timestamp("event_time"),
+        )
+        .withColumn(
+            "ingested_at",
+            current_timestamp(),
+        )
+    )
+
+    dlq_df = (
+        parsed_with_raw_df
+        .filter(
+            col("data._corrupt_record").isNotNull()
+        )
+        .select(
+            lit(1).alias("schema_version"),
+            current_timestamp().alias("failed_at"),
+            lit("spark").alias("stage"),
+            lit("binance").alias("source"),
+            lit("invalid_json").alias("error_type"),
+            lit(
+                "JSON could not be parsed by Spark"
+            ).alias("error_reason"),
+            col("original_message"),
+        )
+    )
+
+    return valid_df, dlq_df
+
 
 
 def main():
