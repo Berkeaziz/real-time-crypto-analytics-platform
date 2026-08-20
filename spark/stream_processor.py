@@ -3,6 +3,7 @@ import redis
 import psycopg2
 import json
 
+from functools import reduce
 from pyspark.sql.window import Window
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
@@ -20,6 +21,10 @@ from pyspark.sql.functions import (
     last,
     row_number,
     lit,
+    array,
+    concat,
+    concat_ws,
+    when,
 )
 
 
@@ -264,6 +269,18 @@ def get_trade_schema() -> StructType:
     ])
 
 def split_trade_records(raw_df, schema):
+    required_fields = (
+        "event_type",
+        "symbol",
+        "trade_id",
+        "price",
+        "quantity",
+        "trade_time",
+        "event_time",
+        "is_buyer_maker",
+        "source",
+    )
+
     parsing_schema = StructType([
         *schema.fields,
         StructField(
@@ -291,10 +308,33 @@ def split_trade_records(raw_df, schema):
         )
     )
 
+    corrupt_condition = (
+        col("data._corrupt_record").isNotNull()
+    )
+
+    missing_required_condition = reduce(
+        lambda left, right: left | right,
+        [
+            col(f"data.{field}").isNull()
+            for field in required_fields
+        ],
+    )
+
+    missing_fields = array(
+        *[
+            when(
+                col(f"data.{field}").isNull(),
+                lit(field),
+            )
+            for field in required_fields
+        ]
+    )
+
     valid_df = (
         parsed_with_raw_df
         .filter(
-            col("data._corrupt_record").isNull()
+            (~corrupt_condition)
+            & (~missing_required_condition)
         )
         .select(
             *[
@@ -319,17 +359,33 @@ def split_trade_records(raw_df, schema):
     dlq_df = (
         parsed_with_raw_df
         .filter(
-            col("data._corrupt_record").isNotNull()
+            corrupt_condition
+            | missing_required_condition
         )
         .select(
             lit(1).alias("schema_version"),
             current_timestamp().alias("failed_at"),
             lit("spark").alias("stage"),
             lit("binance").alias("source"),
-            lit("invalid_json").alias("error_type"),
-            lit(
-                "JSON could not be parsed by Spark"
-            ).alias("error_reason"),
+            when(
+                corrupt_condition,
+                lit("invalid_json"),
+            )
+            .otherwise(
+                lit("missing_required_fields"),
+            )
+            .alias("error_type"),
+            when(
+                corrupt_condition,
+                lit("JSON could not be parsed by Spark"),
+            )
+            .otherwise(
+                concat(
+                    lit("Missing required fields: "),
+                    concat_ws(", ", missing_fields),
+                )
+            )
+            .alias("error_reason"),
             col("original_message"),
         )
     )
